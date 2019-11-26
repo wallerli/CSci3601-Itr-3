@@ -25,6 +25,7 @@ export class HomePage {
     this.highlightElement(by.id('home-rooms-card'));
     return title;
   }
+
   getUniqueRoomTitle() {
     const title = element(by.id('machines-grid')).getText();
     this.highlightElement(by.id('machines-grid'));
@@ -52,6 +53,11 @@ export class HomePage {
   getDialogTitle() {
     const title = element(by.id('dTitle')).getText();
     this.highlightElement(by.id('dTitle'));
+    return title;
+  }
+
+  getRoomTitle() {
+    const title = element(by.id('roomTitle')).getText();
     return title;
   }
 
@@ -144,8 +150,40 @@ export class HomePage {
     return title;
   }
 
+
+
   clickGayHall(){
     this.click('gayId');
+  }
+
+  clickPineHall(){
+    this.click('pineId');
+  }
+
+  clickApartment(){
+    this.click('the_apartmentsId');
+  }
+
+  clickRoomPanel(){
+    this.click('home-rooms-card');
+  }
+
+  clickAllRooms(){
+    this.click('allRooms');
+  }
+
+
+  buttonClickable(Id: string){
+    return element(by.id(Id)).isEnabled();
+  }
+
+  boxChecked(Id: string){
+    return element(by.id(Id));
+  }
+
+  getTextWithID(Id: string){
+    const text = element(by.id(Id)).getText();
+    return text;
   }
 
   getCardName() {
@@ -178,13 +216,6 @@ export class HomePage {
     return element.all(by.className('broken'));
   }
 
-  clickRoomPanel(){
-    this.click('home-rooms-card');
-  }
-
-  clickAllRooms(){
-    this.click('allRooms');
-  }
 
   elementExistsWithId(idOfElement: string): promise.Promise<boolean> {
     if (element(by.id(idOfElement)).isPresent()) {
@@ -217,6 +248,11 @@ export class HomePage {
   getTextFromField(idOfField: string) {
     this.highlightElement(by.id(idOfField));
     return element(by.id(idOfField)).getText();
+  }
+
+  getTextFromClassName(cssOfElement: string) {
+    this.highlightElement(by.className(cssOfElement));
+    return element(by.className(cssOfElement)).getText();
   }
 
 }

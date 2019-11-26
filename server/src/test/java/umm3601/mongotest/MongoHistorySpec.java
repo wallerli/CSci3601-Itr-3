@@ -1,57 +1,27 @@
-package umm3601.history;
+package umm3601.mongotest;
 
-import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
-import org.bson.*;
-import org.bson.codecs.*;
-import org.bson.codecs.configuration.CodecRegistries;
-import org.bson.codecs.configuration.CodecRegistry;
-import org.bson.json.JsonReader;
+import com.mongodb.client.*;
+import org.bson.Document;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
 
+import static com.mongodb.client.model.Filters.eq;
+import static com.mongodb.client.model.Projections.fields;
+import static com.mongodb.client.model.Projections.include;
 import static org.junit.Assert.*;
 
-public class HistoryControllerSpec {
-
-  private HistoryController historyController;
-
-  private MongoCollection<Document> machineDocuments;
+public class MongoHistorySpec {
+  private MongoCollection<Document> historyDocuments;
 
   @Before
   public void clearAndPopulateDB() {
     MongoClient mongoClient = new MongoClient();
-    MongoDatabase machineDB = mongoClient.getDatabase("test");
-    MongoDatabase roomDB = mongoClient.getDatabase("test");
-    MongoDatabase historyDB = mongoClient.getDatabase("test");
-
-    machineDocuments = machineDB.getCollection("machines");
-    machineDocuments.drop();
-    List<Document> testMachines = new ArrayList<>();
-    testMachines.add(Document.parse("{\n" +
-      "\"id\": \"ba9111e9-113f-4bdb-9580-fb098540afa3\",\n" +
-      "\t\"name\": \"Gay Hall\"\n" +
-      "\t\"type\": \"Dryer\"\n" +
-      "\t\"running\": true \n" +
-      "\t\"status\": \"normal\"\n" +
-      "\t\"room_id\": \"gay\"\n" +
-      "  }"));
-    testMachines.add(Document.parse("{\n" +
-      "\"id\": \"bee93873-85c5-48a8-9bba-f0f27ffea3d5\",\n" +
-      "\t\"name\": \"Independence Hall\"\n" +
-      "\t\"type\": \"Washer\"\n" +
-      "\t\"running\": false \n" +
-      "\t\"status\": \"normal\"\n" +
-      "\t\"room_id\": \"independence\"\n" +
-      "  }"));
-    machineDocuments.insertMany(testMachines);
-
-    MongoCollection<Document> historyDocuments = historyDB.getCollection("roomHistory");
+    MongoDatabase db = mongoClient.getDatabase("test");
+    historyDocuments = db.getCollection("rooms");
     historyDocuments.drop();
     List<Document> testHistories = new ArrayList<>();
     testHistories.add(Document.parse("{\n" +
@@ -762,116 +732,53 @@ public class HistoryControllerSpec {
       "\"_id\": \"5dbb7ca758d0466a1ceccf3f\",\n" +
       "\t\"room_id\": \"independence\"\n" +
       "  }"));
+
     historyDocuments.insertMany(testHistories);
-
-    MongoCollection<Document> roomDocuments = roomDB.getCollection("rooms");
-    roomDocuments.drop();
-    List<Document> testRooms = new ArrayList<>();
-    testRooms.add(Document.parse("{\n" +
-      "\t\"id\": \"gay\",\n" +
-      "\t\"name\": \"Gay Hall\"\n" +
-      "  }\n"));
-    testRooms.add(Document.parse("{\n" +
-      "\t\"id\": \"independence\",\n" +
-      "\t\"name\": \"Independence Hall\"\n" +
-      "  }\n"));
-    roomDocuments.insertMany(testRooms);
-
-    // It might be important to construct this _after_ the DB is set up
-    // in case there are bits in the constructor that care about the state
-    // of the database.
-    historyController = new HistoryController(machineDB, roomDB, historyDB);
   }
 
-  private BsonArray parseJsonArray(String json) {
-    final CodecRegistry codecRegistry
-      = CodecRegistries.fromProviders(Arrays.asList(
-      new ValueCodecProvider(),
-      new BsonValueCodecProvider(),
-      new DocumentCodecProvider()));
-
-    JsonReader reader = new JsonReader(json);
-    BsonArrayCodec arrayReader = new BsonArrayCodec(codecRegistry);
-
-    return arrayReader.decode(reader, DecoderContext.builder().build());
+  private List<Document> intoList(MongoIterable<Document> documents) {
+    List<Document> history = new ArrayList<>();
+    documents.into(history);
+    return history;
   }
 
-  private static String getRoomId(BsonValue val) {
-    BsonDocument doc = val.asDocument();
-    return ((BsonString) doc.get("room_id")).getValue();
+  private int countHistories(FindIterable<Document> documents) {
+    List<Document> history = intoList(documents);
+    return history.size();
+  }
+
+  @Test
+  public void shouldBeTwoHistories() {
+    FindIterable<Document> documents = historyDocuments.find();
+    int numberOfHistories = countHistories(documents);
+    assertEquals("Should be 2 total histories", 2, numberOfHistories);
+  }
+
+  @Test
+  public void shouldBeOneIndy() {
+    FindIterable<Document> documents = historyDocuments.find(eq("room_id", "independence"));
+    int numberOfHistories = countHistories(documents);
+    assertEquals("Should be 1 Indy", 1, numberOfHistories);
+  }
+
+  @Test
+  public void shouldBeOneGayHall() {
+    FindIterable<Document> documents = historyDocuments.find(eq("room_id", "gay"));
+    int numberOfHistories = countHistories(documents);
+    assertEquals("Should be 1 Indy", 1, numberOfHistories);
   }
 
 
   @Test
-  public void getAllHistories() {
-    historyController.roomHistoryCollection.drop();
-    historyController.updateHistory();
-    String jsonResult = historyController.getAllHistory();
-    System.out.println(jsonResult);
-    BsonArray docs = parseJsonArray(jsonResult);
-
-    assertEquals("Should be 2 rooms histories", 2, docs.size());
-    List<String> roomId = docs
-      .stream()
-      .map(HistoryControllerSpec::getRoomId)
-      .sorted()
-      .collect(Collectors.toList());
-    List<String> expectedNames = Arrays.asList("gay", "independence");
-    assertEquals("Names should match", expectedNames, roomId);
-  }
-
-  @Test
-  public void updateHistory() {
-    Calendar calendar = Calendar.getInstance();
-
-    int todayBefore = calendar.get(Calendar.DAY_OF_WEEK);
-    int nowBefore = calendar.get(Calendar.HOUR_OF_DAY) * 2 + calendar.get(Calendar.MINUTE) / 30;
-
-    historyController.roomHistoryCollection.drop();
-    historyController.updateHistory();
-
-    Document filterDoc = new Document();
-    filterDoc = filterDoc.append("room_id", "gay");
-    Document targetRoom = historyController.roomHistoryCollection.find(filterDoc).first();
-
-    assert targetRoom != null;
-    Document targetDay = (Document) targetRoom.get(String.valueOf(todayBefore));
-    int beforeUsage = (int) targetDay.get(String.valueOf(nowBefore));
-
-    machineDocuments.drop();
-    List<Document> testMachines = new ArrayList<>();
-    testMachines.add(Document.parse("{\n" +
-      "\"id\": \"ba9111e9-113f-4bdb-9580-fb098540afa3\",\n" +
-      "\t\"name\": \"Gay Hall\"\n" +
-      "\t\"type\": \"Dryer\"\n" +
-      "\t\"running\": true \n" +
-      "\t\"status\": \"normal\"\n" +
-      "\t\"room_id\": \"gay\"\n" +
-      "  }"));
-    testMachines.add(Document.parse("{\n" +
-      "\"id\": \"bee93873-85c5-48a8-9bba-f0f27ffea3d5\",\n" +
-      "\t\"name\": \"Independence Hall\"\n" +
-      "\t\"type\": \"Washer\"\n" +
-      "\t\"running\": true \n" +
-      "\t\"status\": \"normal\"\n" +
-      "\t\"room_id\": \"independence\"\n" +
-      "  }"));
-    machineDocuments.insertMany(testMachines);
-
-    historyController.updateHistory();
-
-    targetRoom = historyController.roomHistoryCollection.find(filterDoc).first();
-    assert targetRoom != null;
-    targetDay = (Document) targetRoom.get(String.valueOf(todayBefore));
-    int afterUsage = (int) targetDay.get(String.valueOf(nowBefore));
-
-    int todayEnd = calendar.get(Calendar.DAY_OF_WEEK);
-    int nowEnd = calendar.get(Calendar.HOUR_OF_DAY) * 2 + calendar.get(Calendar.MINUTE) / 30;
-
-    if (todayEnd == todayBefore && nowEnd == nowBefore) {
-      assertEquals("function should update the usage of the machine", afterUsage - beforeUsage, 24);
-    } else {
-      updateHistory();
-    }
+  public void justName() {
+    FindIterable<Document> documents
+      = historyDocuments.find().projection(fields(include("room_id")));
+    List<Document> docs = intoList(documents);
+    assertEquals("Should be 2", 2, docs.size());
+    assertEquals("First should be Gay Hall", "gay", docs.get(0).get("room_id"));
+    assertEquals("Second should be Indy", "independence", docs.get(1).get("room_id"));
+    assertNull("First shouldn't have id", docs.get(0).get("id"));
+    assertNull("Second shouldn't have id", docs.get(0).get("id"));
   }
 }
+
